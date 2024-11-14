@@ -1,0 +1,20 @@
+[package]
+edition = "2021"
+name = "test_helpers"
+resolver = "2"
+version = "0.1.0"
+
+[dependencies]
+scrypto = {workspace = true}
+lending_pool_proxy = {workspace = true}
+common = {workspace = true}
+
+[features]
+default = []
+test = []
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[lints]
+# workspace = true

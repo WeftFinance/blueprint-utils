@@ -1,0 +1,50 @@
+[workspace]
+members = [
+  "libraries/generate_config",
+  "libraries/lending_pool_proxy",
+  "libraries/common",
+  "libraries/utils",
+  "packages/test_helpers",
+]
+resolver = "2"
+
+[workspace.package]
+description = "A collection of utility packages for the Weft Foundation blueprints"
+edition = "2021"
+
+[workspace.dependencies]
+# Scrypto
+scrypto = {version = "1.2.0"}
+scrypto-test = {version = "1.2.0"}
+
+# Test engine
+test-engine = {git = "https://github.com/atoumbre/scrypto-toolkit.git", branch = "develop"}
+
+# Common and Utils
+generate_config = {path = "libraries/generate_config"}
+lending_pool_proxy = {path = "libraries/lending_pool_proxy"}
+common= {path = "libraries/common"}
+utils = {path = "libraries/utils"}
+
+# Tested packages
+lending_market = {path = "packages/lending_market"}
+lending_pool = {path = "packages/lending_pool"}
+
+# Others
+anyhow = "1.0"
+paste = "1.0"
+
+[profile.release]
+codegen-units = 1 # Reduce number of codegen units to increase optimizations.
+lto = true # Enable Link Time Optimization.
+opt-level = 'z' # Optimize for size.
+overflow-checks = true # Panic in the case of an overflow.
+panic = 'abort' # Abort on panic.
+strip = true # Strip the symbols.
+
+[workspace.lints.clippy]
+arithmetic_side_effects = "warn"
+complexity = "allow"
+type_complexity = "allow"
+too_many_arguments = "allow"
+

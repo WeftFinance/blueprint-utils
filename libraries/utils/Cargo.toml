@@ -1,0 +1,8 @@
+[package]
+edition = "2021"
+name = "utils"
+version = "0.1.0"
+
+[dependencies]
+anyhow = {workspace = true}
+scrypto = {workspace = true}
