@@ -2,6 +2,7 @@
 members = [
   "libraries/generate_config",
   "libraries/lending_pool_proxy",
+  "libraries/staking_engine_proxy",
   "libraries/common",
   "libraries/utils",
   "packages/test_helpers",
@@ -44,7 +45,7 @@ strip = true # Strip the symbols.
 
 [workspace.lints.clippy]
 arithmetic_side_effects = "warn"
-complexity = "allow"
 type_complexity = "allow"
 too_many_arguments = "allow"
+# complexity = "allow"
 

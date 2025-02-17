@@ -48,7 +48,7 @@ fn main2() {
 
   // println!("{:#?}", config);
 
-  assert!(config.resource_map.get("resource_key2").is_none());
+  assert!(!config.resource_map.contains_key("resource_key2"));
   assert!(!config.underlying_resources.contains("resource1"));
   // assert!(config.check().is_ok());
 }

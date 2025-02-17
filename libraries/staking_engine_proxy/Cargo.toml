@@ -1,0 +1,25 @@
+[package]
+edition = "2021"
+name = "staking_engine_proxy"
+resolver = "2"
+version = "0.1.0"
+
+[dependencies]
+anyhow = {workspace = true}
+scrypto = {workspace = true}
+utils = {workspace = true}
+common = {workspace = true}
+generate_config = {workspace = true}
+
+[dev-dependencies]
+scrypto-test = {workspace = true}
+
+[features]
+default = []
+test = []
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[lints]
+workspace = true
