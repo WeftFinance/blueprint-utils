@@ -11,8 +11,19 @@ pub struct PriceInfo {
   pub price: Decimal,
 }
 
+type ComponentAndResource = (ComponentAddress, ResourceAddress);
+type ComponentAndBool = (ComponentAddress, bool);
+
 #[blueprint]
-#[types(AuthBadgeData,ResourceAddress, CacheEntry<PreciseDecimal>)]
+#[types(
+  AuthBadgeData,
+  ComponentAddress,
+  ResourceAddress,
+  CacheEntry<PreciseDecimal>,
+  NonFungibleVault,
+  ComponentAndResource,
+  ComponentAndBool,
+)]
 mod dummy_client_app {
 
   enable_method_auth! {
@@ -21,17 +32,19 @@ mod dummy_client_app {
     },
     methods {
       set_client_badge => restrict_to: [client_badge_setter];
+      register_lending_pool => PUBLIC;
       deposit => PUBLIC;
       withdraw => PUBLIC;
-      get_deposit_unit_address => PUBLIC;
       get_loan_unit_ratio => PUBLIC;
-      get_deposit_unit_ratio => PUBLIC;
       protected_borrow => PUBLIC;
       protected_repay => PUBLIC;
+      // get_deposit_unit_address => PUBLIC;
+      // get_deposit_unit_ratio => PUBLIC;
     }
   }
 
   struct DummyClientApp {
+    default_pool: ComponentAddress,
     lending_pool_proxy: LendingPoolProxy,
     resources: KeyValueStore<ResourceAddress, FungibleVault>,
   }
@@ -50,14 +63,14 @@ mod dummy_client_app {
       //   })
       //   .mint_initial_supply([(IntegerNonFungibleLocalId::from(0), AuthBadgeData {})]);
 
-      let client_badge: GlobalAddress = lending_pool.get_metadata("client_badge").unwrap().unwrap();
+      // let client_badge: GlobalAddress = lending_pool.get_metadata("client_badge").unwrap().unwrap();
 
       Self {
+        default_pool: lending_pool.address(),
         lending_pool_proxy: LendingPoolProxy {
-          lending_pool,
-          client_badge: NonFungibleVault::new(ResourceAddress::try_from(client_badge).unwrap()),
-          deposit_unit_ratio_cache: KeyValueStore::new_with_registered_type(),
+          client_badges: KeyValueStore::new_with_registered_type(),
           loan_unit_ratio_cache: KeyValueStore::new_with_registered_type(),
+          registered_lending_pools: KeyValueStore::new_with_registered_type(),
         },
 
         resources: KeyValueStore::new(),
@@ -71,15 +84,24 @@ mod dummy_client_app {
     }
 
     pub fn set_client_badge(&mut self, client_badge: NonFungibleBucket) {
-      if !self.lending_pool_proxy.client_badge.is_empty() {
-        panic!("{}", "CLIENT_BADGE_ALREADY_SET");
-      }
+      // if !self.lending_pool_proxy.client_badge.is_empty() {
+      //   panic!("{}", "CLIENT_BADGE_ALREADY_SET");
+      // }
 
-      if client_badge.amount() != Decimal::ONE {
-        panic!("{}", "ONLY_SINGLE_CLIENT_BADGE_SUPPORTED");
-      }
+      // if client_badge.amount() != Decimal::ONE {
+      //   panic!("{}", "ONLY_SINGLE_CLIENT_BADGE_SUPPORTED");
+      // }
 
-      self.lending_pool_proxy.client_badge.put(client_badge);
+      // self.lending_pool_proxy.client_badge.put(client_badge);
+
+      self.lending_pool_proxy.set_client_badge(client_badge);
+    }
+
+    pub fn register_lending_pool(&mut self, lending_pool_address: ComponentAddress, client_badge_address: ResourceAddress) {
+      self
+        .lending_pool_proxy
+        .register_lending_pool(lending_pool_address, client_badge_address)
+        .expect("ERROR_IN_REGISTER_LENDING_POOL");
     }
 
     pub fn deposit(&mut self, resources: FungibleBucket) {
@@ -96,28 +118,28 @@ mod dummy_client_app {
       let mut vault = self.resources.get_mut(&resource).expect("Resource not found");
 
       if let Some(amount) = amount {
-        vault.take_advanced(amount, WithdrawStrategy::Rounded(RoundingMode::ToNearestMidpointTowardZero))
+        vault.take_advanced(amount, WithdrawStrategy::Rounded(RoundingMode::ToNearestMidpointToEven))
       } else {
         vault.take_all()
       }
     }
 
-    pub fn get_deposit_unit_address(&mut self, res_address: ResourceAddress) -> Option<ResourceAddress> {
-      self.lending_pool_proxy.get_deposit_unit_address(res_address)
-    }
+    // pub fn get_deposit_unit_address(&mut self, res_address: ResourceAddress) -> Option<ResourceAddress> {
+    //   self.lending_pool_proxy.get_deposit_unit_address(res_address)
+    // }
 
     pub fn get_loan_unit_ratio(&mut self, res_addresses: IndexSet<ResourceAddress>) -> IndexMap<ResourceAddress, PreciseDecimal> {
-      self.lending_pool_proxy.get_loan_unit_ratio(res_addresses)
+      self.lending_pool_proxy.get_loan_unit_ratio(self.default_pool, res_addresses)
     }
 
-    pub fn get_deposit_unit_ratio(&mut self, res_addresses: IndexSet<ResourceAddress>) -> IndexMap<ResourceAddress, PreciseDecimal> {
-      self.lending_pool_proxy.get_deposit_unit_ratio(res_addresses)
-    }
+    // pub fn get_deposit_unit_ratio(&mut self, res_addresses: IndexSet<ResourceAddress>) -> IndexMap<ResourceAddress, PreciseDecimal> {
+    //   self.lending_pool_proxy.get_deposit_unit_ratio(res_addresses)
+    // }
 
     pub fn protected_borrow(&mut self, resources: IndexMap<ResourceAddress, Decimal>) {
       self
         .lending_pool_proxy
-        .protected_borrow(resources)
+        .protected_borrow(self.default_pool, resources)
         .into_iter()
         .for_each(|(bucket, _)| self.deposit(bucket));
     }
@@ -130,7 +152,7 @@ mod dummy_client_app {
 
       self
         .lending_pool_proxy
-        .protected_repay(repays)
+        .protected_repay(self.default_pool, repays)
         .into_iter()
         .for_each(|(_, bucket, _)| self.deposit(bucket));
     }

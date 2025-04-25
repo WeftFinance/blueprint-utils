@@ -1,12 +1,12 @@
 use scrypto::prelude::*;
 
 #[derive(ScryptoSbor, NonFungibleData)]
-pub struct LockerNftData {
+pub struct LockerData {
   data: IndexMap<ResourceAddress, Decimal>,
 }
 
 #[blueprint]
-mod nft_locker_faucet {
+mod locker_faucet {
 
   use indexmap::IndexMap;
 
@@ -18,15 +18,15 @@ mod nft_locker_faucet {
                  get_eligible_resources_by_nft => PUBLIC;
           }
   }
-  struct NftLockerFaucet {
+  struct LockerFaucet {
     nfts: IndexMap<ResourceAddress, Vec<ResourceAddress>>,
     nfts_resource_lookup: IndexMap<Vec<ResourceAddress>, ResourceAddress>,
-    nft_resources_manager: IndexMap<ResourceAddress, ResourceManager>,
+    nft_resources_manager: IndexMap<ResourceAddress, NonFungibleResourceManager>,
     admin_role: OwnerRole,
   }
 
-  impl NftLockerFaucet {
-    pub fn instantiate(admin_role: OwnerRole) -> Global<NftLockerFaucet> {
+  impl LockerFaucet {
+    pub fn instantiate(admin_role: OwnerRole) -> Global<LockerFaucet> {
       Self {
         admin_role: admin_role.clone(),
         nfts: IndexMap::new(),
@@ -43,7 +43,7 @@ mod nft_locker_faucet {
       let resources_vec: Vec<ResourceAddress> = resources.into_iter().collect();
       assert!(!resources_vec.is_empty(), "At least 1 resource is required");
       assert!(!self.nfts_resource_lookup.contains_key(&resources_vec), "NFT already create");
-      let resource_manager = ResourceBuilder::new_ruid_non_fungible::<LockerNftData>(self.admin_role.clone())
+      let resource_manager = ResourceBuilder::new_ruid_non_fungible::<LockerData>(self.admin_role.clone())
         .mint_roles(mint_roles! {
           minter => rule!(allow_all);
           minter_updater => rule!(deny_all);
@@ -74,9 +74,7 @@ mod nft_locker_faucet {
 
       let resource_manager = self.nft_resources_manager.get_mut(&nft_resource_address).unwrap();
 
-      resource_manager
-        .mint_ruid_non_fungible(LockerNftData { data: nft_resource_amount })
-        .as_non_fungible()
+      resource_manager.mint_ruid_non_fungible(LockerData { data: nft_resource_amount })
     }
 
     pub fn get_resource_amounts(
@@ -89,12 +87,12 @@ mod nft_locker_faucet {
       let res_amount = nft_ids.iter().fold(IndexMap::new(), |mut res_amount, id| {
         let res_amount_entry: &mut IndexMap<ResourceAddress, Decimal> = res_amount.entry(id.clone()).or_default();
 
-        let data: LockerNftData = locker_res_manager.get_non_fungible_data(id);
+        let data: LockerData = locker_res_manager.get_non_fungible_data(id);
 
         for (res, amount) in data.data {
           let entry = res_amount_entry.entry(res).or_insert(Decimal::ZERO);
 
-          *entry += amount;
+          *entry = amount.checked_add(*entry).unwrap();
         }
 
         res_amount

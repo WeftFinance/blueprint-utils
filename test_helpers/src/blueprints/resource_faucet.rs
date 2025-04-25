@@ -79,7 +79,7 @@ mod resource_faucet {
       let mut vault = self.resources.get_mut(&resource).expect("Resource not found");
 
       if let Some(amount) = amount {
-        vault.take_advanced(amount, WithdrawStrategy::Rounded(RoundingMode::ToNearestMidpointTowardZero))
+        vault.take_advanced(amount, WithdrawStrategy::Rounded(RoundingMode::ToNearestMidpointToEven))
       } else {
         vault.take_all()
       }
@@ -98,7 +98,7 @@ mod resource_faucet {
 
       assert!(from_price.price > Decimal::ZERO, "XRD price is zero");
 
-      let to_amount = xrd.amount() * (from_price.price / to_price.price);
+      let to_amount = xrd.amount().checked_mul(from_price.price.checked_div(to_price.price).unwrap()).unwrap();
 
       self.collected_xrd.put(xrd);
 
@@ -106,7 +106,7 @@ mod resource_faucet {
         .resources
         .get_mut(&resource)
         .expect("Resource not found")
-        .take_advanced(to_amount, WithdrawStrategy::Rounded(RoundingMode::ToNearestMidpointTowardZero))
+        .take_advanced(to_amount, WithdrawStrategy::Rounded(RoundingMode::ToNearestMidpointToEven))
     }
 
     /// TEST EXCHANGE
@@ -119,7 +119,10 @@ mod resource_faucet {
 
       assert!(from_price.price > Decimal::ZERO, "XRD price is zero");
 
-      let to_amount = from_bucket.amount() * (from_price.price / to_price.price);
+      let to_amount = from_bucket
+        .amount()
+        .checked_mul(from_price.price.checked_div(to_price.price).unwrap())
+        .unwrap();
 
       if self.resources.get(&from_resource).is_none() {
         self.resources.insert(from_resource, Vault::with_bucket(from_bucket));
@@ -131,7 +134,7 @@ mod resource_faucet {
         .resources
         .get_mut(&to_resource)
         .expect("Resource not found")
-        .take_advanced(to_amount, WithdrawStrategy::Rounded(RoundingMode::ToNearestMidpointTowardZero))
+        .take_advanced(to_amount, WithdrawStrategy::Rounded(RoundingMode::ToNearestMidpointToEven))
     }
 
     /// Local methods
@@ -139,7 +142,8 @@ mod resource_faucet {
     fn get_price(&mut self, resource: ResourceAddress) -> PriceInfo {
       self
         .price_feed
-        .call_raw::<Option<PriceInfo>>("get_price", scrypto_args!(resource))
+        .call_raw::<IndexMap<ResourceAddress, PriceInfo>>("get_prices", scrypto_args!(indexset!(resource)))
+        .shift_remove(&resource)
         .expect("Price not found")
     }
   }

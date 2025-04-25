@@ -17,4 +17,4 @@ test = []
 crate-type = ["cdylib", "lib"]
 
 [lints]
-# workspace = true
+workspace = true
