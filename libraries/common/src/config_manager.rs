@@ -1,16 +1,29 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, ensure, Result};
 use scrypto::prelude::rust::hash::Hash;
 use scrypto::prelude::*;
-use utils::InstantUtils;
+use utils::{define_inner_error, InstantUtils};
+
+define_inner_error! {
+  KEY_AND_VERSION_MISMATCH,
+  CONFIG_ENTRY_NOT_FOUND,
+  CONFIG_VERSION_NOT_FOUND,
+}
+
+#[derive(ScryptoSbor, ManifestSbor, Clone)]
+pub enum SetExpirationInput {
+  None,
+  Now,
+  Instant(Instant),
+}
 
 #[derive(ScryptoSbor, Clone, PartialEq, Eq, Hash)]
-pub enum ConfigurationKey<K: ScryptoSbor + Hash + Copy> {
+pub enum ConfigurationKey<K: ScryptoSbor + Debug + Hash + Copy> {
   Current(K),
   History(u64),
 }
 
 #[derive(ScryptoSbor, Clone)]
-pub struct ConfigurationEntry<K: ScryptoSbor + Hash + Copy, C: ScryptoSbor> {
+pub struct ConfigurationEntry<K: ScryptoSbor + Debug + Hash + Copy, C: ScryptoSbor> {
   key: K,
   entry: C,
   version: u64,
@@ -26,13 +39,12 @@ pub trait Updatable<U> {
 #[derive(ScryptoSbor)]
 pub struct ConfigurationManager<K, C, U>
 where
-  K: ScryptoSbor + Hash + Copy,
+  K: ScryptoSbor + Hash + Copy + Debug,
   C: ScryptoSbor + Clone + Updatable<U>,
   U: ScryptoSbor,
 {
   // Config
   track_history: bool,
-  get_config_error_message: String,
   default_expiration_time: Option<u64>,
   // State
   version_count: u64,
@@ -43,20 +55,14 @@ where
 
 impl<K, C, U> ConfigurationManager<K, C, U>
 where
-  K: ScryptoSbor + Hash + Copy,
+  K: ScryptoSbor + Debug + Hash + Copy + PartialEq + Eq,
   C: ScryptoSbor + Clone + Updatable<U>,
   U: ScryptoSbor,
 {
-  pub fn new(
-    track_history: bool,
-    default_expiration_time: Option<u64>,
-    get_config_error_message: String,
-    entries: KeyValueStore<ConfigurationKey<K>, ConfigurationEntry<K, C>>,
-  ) -> Self {
+  pub fn new(track_history: bool, entries: KeyValueStore<ConfigurationKey<K>, ConfigurationEntry<K, C>>) -> Self {
     Self {
       track_history,
-      default_expiration_time,
-      get_config_error_message,
+      default_expiration_time: None,
       entries,
       entry_count: 0,
       version_count: 0,
@@ -68,7 +74,6 @@ where
     self.default_expiration_time = new_default_expiration;
   }
 
-  #[inline]
   pub fn get_entry_count(&self) -> u16 {
     self.entry_count
   }
@@ -85,13 +90,20 @@ where
     self.set_entry_internal(key, current_entry)
   }
 
-  pub fn set_entry_expired(&mut self, version: u64) -> Result<()> {
+  pub fn set_entry_expiration(&mut self, key: K, version: u64, expiration_time: SetExpirationInput) -> Result<()> {
     match self.entries.get_mut(&ConfigurationKey::History(version)) {
       Some(mut entry) => {
-        entry.expiration_time = Some(Instant::now());
+        ensure!(entry.key == key, "{}|{:?} != {:?}", KEY_AND_VERSION_MISMATCH, key, entry.key);
+
+        match expiration_time {
+          SetExpirationInput::None => entry.expiration_time = None,
+          SetExpirationInput::Now => entry.expiration_time = Some(Instant::now()),
+          SetExpirationInput::Instant(expiration_time) => entry.expiration_time = Some(expiration_time),
+        };
+
         Ok(())
       }
-      None => Err(anyhow!(self.get_config_error_message.to_string())),
+      None => Err(anyhow!("{}|{}", CONFIG_VERSION_NOT_FOUND, version)),
     }
   }
 
@@ -100,7 +112,7 @@ where
       .entries
       .get(&ConfigurationKey::Current(key))
       .map(|e| e.version)
-      .ok_or_else(|| anyhow!(self.get_config_error_message.to_string()))
+      .ok_or(anyhow!(CONFIG_ENTRY_NOT_FOUND))
   }
 
   pub fn get_current_entry(&self, key: K) -> Result<C> {
@@ -108,14 +120,16 @@ where
       .entries
       .get(&ConfigurationKey::Current(key))
       .map(|e| e.entry.clone())
-      .ok_or_else(|| anyhow!(self.get_config_error_message.to_string()))
+      .ok_or(anyhow!(CONFIG_ENTRY_NOT_FOUND))
   }
 
-  pub fn get_history_entry(&self, version: u64) -> Result<(C, bool)> {
+  pub fn get_history_entry(&self, key: K, version: u64) -> Result<(C, bool)> {
     let entry = self
       .entries
       .get(&ConfigurationKey::History(version))
-      .ok_or_else(|| anyhow!(self.get_config_error_message.to_string()))?;
+      .ok_or(anyhow!(CONFIG_VERSION_NOT_FOUND))?;
+
+    ensure!(entry.key == key, "{}|{:?} != {:?}", KEY_AND_VERSION_MISMATCH, key, entry.key);
 
     let is_from_history = entry.expiration_time.map_or(true, |time| time > Instant::now());
 
@@ -157,7 +171,7 @@ where
       };
 
       self.entries.insert(ConfigurationKey::History(self.version_count), history_entry);
-      self.version_count = self.version_count.saturating_add(1);
+      self.version_count = self.version_count.checked_add(1).unwrap();
     }
 
     Ok(())

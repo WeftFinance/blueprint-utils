@@ -175,3 +175,21 @@ pub fn checked_round(amount: Decimal, inner_precision: u8) -> Result<Decimal> {
     .checked_round(inner_precision, RoundingMode::ToNearestMidpointTowardZero)
     .ok_or(anyhow!("Rounding failed"))
 }
+
+#[macro_export]
+macro_rules! define_inner_error {
+    ($($name:ident,)*) => {
+        $(
+            pub const $name: &'static str =  stringify!($name);
+        )*
+    };
+}
+
+#[macro_export]
+macro_rules! define_error {
+    ($prefix:literal,$($name:ident,)*) => {
+        $(
+            pub const $name: &'static str = concat!($prefix," ", stringify!($name));
+        )*
+    };
+}

@@ -13,9 +13,10 @@ pub enum UpdateSetInput<T> {
 pub struct EmptyBadgeData {}
 
 /// Define options for deposit limit
-#[derive(ScryptoSbor, ManifestSbor, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(ScryptoSbor, ManifestSbor, Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub enum DepositLimitType {
   /// No limit
+  #[default]
   None,
 
   /// Limit by amount
