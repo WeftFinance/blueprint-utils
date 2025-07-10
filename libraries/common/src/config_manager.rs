@@ -23,9 +23,9 @@ pub enum ConfigurationKey<K: ScryptoSbor + Debug + Hash + Copy> {
 }
 
 #[derive(ScryptoSbor, Clone)]
-pub struct ConfigurationEntry<K: ScryptoSbor + Debug + Hash + Copy, C: ScryptoSbor> {
+pub struct ConfigurationEntry<K: ScryptoSbor + Debug + Hash + Copy, E: ScryptoSbor> {
   key: K,
-  entry: C,
+  entry: E,
   version: u64,
   expiration_time: Option<Instant>,
 }
@@ -88,6 +88,11 @@ where
     current_entry.update(update_inputs)?;
 
     self.set_entry_internal(key, current_entry)
+  }
+
+  pub fn remove_entry(&mut self, key: K) -> Result<()> {
+    self.entries.remove(&ConfigurationKey::Current(key));
+    Ok(())
   }
 
   pub fn set_entry_expiration(&mut self, key: K, version: u64, expiration_time: SetExpirationInput) -> Result<()> {
