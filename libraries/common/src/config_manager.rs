@@ -136,7 +136,7 @@ where
 
     ensure!(entry.key == key, "{}|{:?} != {:?}", KEY_AND_VERSION_MISMATCH, key, entry.key);
 
-    let is_from_history = entry.expiration_time.is_none_or(|time| time > Instant::now());
+    let is_from_history = entry.expiration_time.map_or(true, |time| time > Instant::now());
 
     let returned_entry = if is_from_history {
       entry.entry.clone()
