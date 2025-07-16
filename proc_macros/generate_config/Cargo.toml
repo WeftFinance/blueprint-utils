@@ -1,5 +1,5 @@
 [package]
-edition = "2018"
+edition = "2021"
 name = "generate_config"
 version = "0.1.0"
 
@@ -7,7 +7,7 @@ version = "0.1.0"
 #
 anyhow = {workspace = true}
 scrypto = {workspace = true}
-common = {workspace = true}
+utils = {workspace = true}
 #
 Inflector = "0.11.4"
 convert_case = "0.4"

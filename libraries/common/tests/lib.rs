@@ -86,3 +86,48 @@ fn test_set_roles() {
     assert!(status.set_status(service, false, StatusChangeType::ModeratorSet).is_err());
   }
 }
+
+#[derive(ScryptoSbor, ManifestSbor, Debug, Clone, PartialEq, Eq, Hash, GenerateConfig)]
+struct TestConfig {
+  #[check = "val.is_positive()"]
+  amount: Decimal,
+  #[check = "val.is_a_rate()"]
+  rate: Decimal,
+}
+
+updatable_config!(TestConfig);
+
+trait CanBeChecked {
+  fn is_a_rate(&self) -> bool;
+  // fn is_positive(&self) -> bool;
+}
+
+impl CanBeChecked for &Decimal {
+  fn is_a_rate(&self) -> bool {
+    **self >= Decimal::ZERO && **self <= Decimal::ONE
+  }
+
+  // fn is_positive(&self) -> bool {
+  //   **self > Decimal::ZERO
+  // }
+}
+
+#[test]
+fn test_updatable_config_macro() {
+  let mut config = TestConfig {
+    amount: Decimal::ONE,
+    rate: dec!("0.5"),
+  };
+
+  assert!(config.check().is_ok());
+
+  let updates = indexset![UpdateTestConfigInput::Amount(Decimal::from(10)), UpdateTestConfigInput::Rate(dec!("0.8"))];
+
+  assert!(config.update(updates).is_ok());
+  assert_eq!(config.amount, Decimal::from(10));
+  assert_eq!(config.rate, dec!("0.8"));
+
+  // Test validation methods work correctly
+  assert!(config.amount.is_positive());
+  assert!((&config.rate).is_a_rate());
+}

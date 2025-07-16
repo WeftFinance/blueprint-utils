@@ -1,11 +1,9 @@
 [workspace]
 members = [
-  "libraries/generate_config",
-  "libraries/lending_pool_proxy",
-  "libraries/staking_engine_proxy",
   "libraries/common",
   "libraries/utils",
-  "packages/test_helpers",
+  "proc_macros/generate_config",
+  "proc_macros/safe_arithmetic",
 ]
 resolver = "2"
 
@@ -15,25 +13,19 @@ edition = "2021"
 
 [workspace.dependencies]
 # Scrypto
-scrypto = {version = "1.2.0"}
-scrypto-test = {version = "1.2.0"}
-
-# Test engine
-test-engine = {git = "https://github.com/atoumbre/scrypto-toolkit.git", branch = "develop"}
-
-# Common and Utils
-generate_config = {path = "libraries/generate_config"}
-lending_pool_proxy = {path = "libraries/lending_pool_proxy"}
-common= {path = "libraries/common"}
-utils = {path = "libraries/utils"}
-
-# Tested packages
-lending_market = {path = "packages/lending_market"}
-lending_pool = {path = "packages/lending_pool"}
+scrypto = {version = "1.3.0"}
+scrypto-test = {version = "1.3.0"}
 
 # Others
 anyhow = "1.0"
 paste = "1.0"
+
+# Local dependencies
+common= {path = "libraries/common"}
+utils = {path = "libraries/utils"}
+generate_config = {path = "proc_macros/generate_config"}
+safe_arithmetic =  {path = "proc_macros/safe_arithmetic"}
+
 
 [profile.release]
 codegen-units = 1 # Reduce number of codegen units to increase optimizations.

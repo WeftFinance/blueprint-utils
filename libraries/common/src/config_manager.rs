@@ -1,27 +1,50 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, ensure, Result};
 use scrypto::prelude::rust::hash::Hash;
 use scrypto::prelude::*;
-use utils::InstantUtils;
+use utils::prelude::*;
 
-#[derive(ScryptoSbor, Clone)]
-pub enum ConfigurationKey<K: ScryptoSbor + Hash + Copy> {
+define_inner_error! {
+  KEY_AND_VERSION_MISMATCH,
+  CONFIG_ENTRY_NOT_FOUND,
+  CONFIG_VERSION_NOT_FOUND,
+}
+
+#[derive(ScryptoSbor, ManifestSbor, Clone)]
+pub enum SetExpirationInput {
+  None,
+  Now,
+  Instant(Instant),
+}
+
+#[derive(ScryptoSbor, Clone, PartialEq, Eq, Hash)]
+pub enum ConfigurationKey<K: ScryptoSbor + Debug + Hash + Copy> {
   Current(K),
   History(u64),
 }
 
 #[derive(ScryptoSbor, Clone)]
-pub struct ConfigurationEntry<K: ScryptoSbor + Hash + Copy, C: ScryptoSbor> {
+pub struct ConfigurationEntry<K: ScryptoSbor + Debug + Hash + Copy, E: ScryptoSbor> {
   key: K,
-  entry: C,
+  entry: E,
   version: u64,
   expiration_time: Option<Instant>,
 }
 
+/// Trait for updatable items
+pub trait Updatable<U> {
+  fn update(&mut self, inputs: U) -> Result<()>;
+  fn check(&self) -> Result<()>;
+}
+
 #[derive(ScryptoSbor)]
-pub struct ConfigurationManager<K: ScryptoSbor + Hash + Copy, C: ScryptoSbor + Clone + Updatable<U>, U: ScryptoSbor> {
+pub struct ConfigurationManager<K, C, U>
+where
+  K: ScryptoSbor + Hash + Copy + Debug,
+  C: ScryptoSbor + Clone + Updatable<U>,
+  U: ScryptoSbor,
+{
   // Config
   track_history: bool,
-  get_config_error_message: String,
   default_expiration_time: Option<u64>,
   // State
   version_count: u64,
@@ -30,17 +53,16 @@ pub struct ConfigurationManager<K: ScryptoSbor + Hash + Copy, C: ScryptoSbor + C
   phantom_data: Option<U>,
 }
 
-impl<K: ScryptoSbor + Hash + Copy, C: ScryptoSbor + Clone + Updatable<U>, U: ScryptoSbor> ConfigurationManager<K, C, U> {
-  pub fn new(
-    track_history: bool,
-    default_expiration_time: Option<u64>,
-    get_config_error_message: String,
-    entries: KeyValueStore<ConfigurationKey<K>, ConfigurationEntry<K, C>>,
-  ) -> Self {
+impl<K, C, U> ConfigurationManager<K, C, U>
+where
+  K: ScryptoSbor + Debug + Hash + Copy + PartialEq + Eq,
+  C: ScryptoSbor + Clone + Updatable<U>,
+  U: ScryptoSbor,
+{
+  pub fn new(track_history: bool, entries: KeyValueStore<ConfigurationKey<K>, ConfigurationEntry<K, C>>) -> Self {
     Self {
       track_history,
-      default_expiration_time,
-      get_config_error_message,
+      default_expiration_time: None,
       entries,
       entry_count: 0,
       version_count: 0,
@@ -56,26 +78,46 @@ impl<K: ScryptoSbor + Hash + Copy, C: ScryptoSbor + Clone + Updatable<U>, U: Scr
     self.entry_count
   }
 
-  pub fn new_entry(&mut self, key: K, entry: C) -> Result<()> {
-    self.set_entry(key, entry, true)
+  pub fn set_entry(&mut self, key: K, entry: C) -> Result<()> {
+    self.set_entry_internal(key, entry)
   }
 
   pub fn update_entry(&mut self, key: K, update_inputs: U) -> Result<()> {
     let mut current_entry = self.get_current_entry(key)?;
 
     current_entry.update(update_inputs)?;
-    current_entry.check()?;
 
-    self.set_entry(key, current_entry, false)
+    self.set_entry_internal(key, current_entry)
   }
 
-  pub fn set_entry_expired(&mut self, version: u64) -> Result<()> {
-    if let Some(mut entry) = self.entries.get_mut(&ConfigurationKey::History(version)) {
-      entry.expiration_time = Some(Instant::now());
-      Ok(())
-    } else {
-      Err(anyhow!(self.get_config_error_message.clone()))
+  pub fn remove_entry(&mut self, key: K) -> Result<()> {
+    self.entries.remove(&ConfigurationKey::Current(key));
+    Ok(())
+  }
+
+  pub fn set_entry_expiration(&mut self, key: K, version: u64, expiration_time: SetExpirationInput) -> Result<()> {
+    match self.entries.get_mut(&ConfigurationKey::History(version)) {
+      Some(mut entry) => {
+        ensure!(entry.key == key, "{}|{:?} != {:?}", KEY_AND_VERSION_MISMATCH, key, entry.key);
+
+        match expiration_time {
+          SetExpirationInput::None => entry.expiration_time = None,
+          SetExpirationInput::Now => entry.expiration_time = Some(Instant::now()),
+          SetExpirationInput::Instant(expiration_time) => entry.expiration_time = Some(expiration_time),
+        };
+
+        Ok(())
+      }
+      None => Err(anyhow!("{}|{}", CONFIG_VERSION_NOT_FOUND, version)),
     }
+  }
+
+  pub fn get_current_version(&self, key: K) -> Result<u64> {
+    self
+      .entries
+      .get(&ConfigurationKey::Current(key))
+      .map(|e| e.version)
+      .ok_or(anyhow!(CONFIG_ENTRY_NOT_FOUND))
   }
 
   pub fn get_current_entry(&self, key: K) -> Result<C> {
@@ -83,16 +125,18 @@ impl<K: ScryptoSbor + Hash + Copy, C: ScryptoSbor + Clone + Updatable<U>, U: Scr
       .entries
       .get(&ConfigurationKey::Current(key))
       .map(|e| e.entry.clone())
-      .ok_or_else(|| anyhow!(self.get_config_error_message.clone()))
+      .ok_or(anyhow!(CONFIG_ENTRY_NOT_FOUND))
   }
 
-  pub fn get_history_entry(&self, version: u64) -> Result<(C, bool)> {
+  pub fn get_history_entry(&self, key: K, version: u64) -> Result<(C, bool)> {
     let entry = self
       .entries
       .get(&ConfigurationKey::History(version))
-      .ok_or_else(|| anyhow!(self.get_config_error_message.clone()))?;
+      .ok_or(anyhow!(CONFIG_VERSION_NOT_FOUND))?;
 
-    let is_from_history = entry.expiration_time.map_or(true, |time| time > Instant::now());
+    ensure!(entry.key == key, "{}|{:?} != {:?}", KEY_AND_VERSION_MISMATCH, key, entry.key);
+
+    let is_from_history = entry.expiration_time.is_none_or(|time| time > Instant::now());
 
     let returned_entry = if is_from_history {
       entry.entry.clone()
@@ -103,46 +147,76 @@ impl<K: ScryptoSbor + Hash + Copy, C: ScryptoSbor + Clone + Updatable<U>, U: Scr
     Ok((returned_entry, is_from_history))
   }
 
-  pub fn get_current_version(&self, key: K) -> Result<u64> {
-    self
-      .entries
-      .get(&ConfigurationKey::Current(key))
-      .map(|e| e.version)
-      .ok_or_else(|| anyhow!(self.get_config_error_message.clone()))
-  }
+  // ! LOCAL METHODS
 
-  fn insert_entry(&mut self, config_key: ConfigurationKey<K>, key: K, entry: C, expiration_time: Option<Instant>) -> Result<()> {
-    self.entries.insert(
-      config_key,
-      ConfigurationEntry {
+  fn set_entry_internal(&mut self, key: K, entry: C) -> Result<()> {
+    entry.check()?;
+
+    if self.entries.get(&ConfigurationKey::Current(key)).is_none() {
+      self.entry_count = self.entry_count.saturating_add(1);
+    }
+
+    let current_entry = ConfigurationEntry {
+      key,
+      entry: entry.clone(),
+      version: self.version_count,
+      expiration_time: None,
+    };
+
+    self.entries.insert(ConfigurationKey::Current(key), current_entry);
+
+    if self.track_history {
+      let expiration_time = self.default_expiration_time.map(|exp| Instant::now().add_seconds(exp as i64).unwrap());
+
+      let history_entry = ConfigurationEntry {
         key,
         entry,
         version: self.version_count,
         expiration_time,
-      },
-    );
-    Ok(())
-  }
+      };
 
-  fn set_entry(&mut self, key: K, entry: C, increment_version: bool) -> Result<()> {
-    self.insert_entry(ConfigurationKey::Current(key), key, entry.clone(), None)?;
-
-    if self.track_history {
-      let expiration_time = self.default_expiration_time.map(|exp| Instant::now().add_seconds(exp as i64).unwrap());
-      self.insert_entry(ConfigurationKey::History(self.version_count), key, entry, expiration_time)?;
-      self.version_count += 1;
-    }
-
-    if increment_version {
-      self.entry_count += 1;
+      self.entries.insert(ConfigurationKey::History(self.version_count), history_entry);
+      self.version_count = self.version_count.checked_add(1).unwrap();
     }
 
     Ok(())
   }
 }
 
-/// Trait for updatable items
-pub trait Updatable<U> {
-  fn update(&mut self, inputs: U) -> Result<()>;
-  fn check(&self) -> Result<()>;
+/// Macro for implementing the `Updatable` trait on structs that use `GenerateConfig`.
+///
+/// This macro simplifies the implementation of the `Updatable` trait for configuration
+/// structs that derive `GenerateConfig`. It automatically:
+///
+/// 1. Infers the update type name as `Update{StructName}Input`
+/// 2. Implements both `update()` and `check()` methods
+/// 3. Handles error conversion from String to anyhow::Error
+/// 4. Uses `IndexSet` for the update input collection
+///
+/// # Requirements
+/// - The struct must derive `GenerateConfig` from the generate_config crate
+/// - The struct must have `update()` and `check()` methods that return `Result<(), String>`
+#[macro_export]
+macro_rules! updatable_config {
+  ($struct_name:ident) => {
+    paste::paste! {
+      impl Updatable<IndexSet<[<Update $struct_name Input>]>> for $struct_name {
+        /// Updates the configuration with the provided update inputs.
+        ///
+        /// This implementation delegates to the `update()` method generated by
+        /// the `GenerateConfig` derive macro and converts string errors to anyhow errors.
+        fn update(&mut self, updates: IndexSet<[<Update $struct_name Input>]>) -> anyhow::Result<()> {
+          self.update(updates).map_err(anyhow::Error::msg)
+        }
+
+        /// Validates the current configuration state.
+        ///
+        /// This implementation delegates to the `check()` method generated by
+        /// the `GenerateConfig` derive macro and converts string errors to anyhow errors.
+        fn check(&self) -> anyhow::Result<()> {
+          self.check().map_err(anyhow::Error::msg)
+        }
+      }
+    }
+  };
 }
