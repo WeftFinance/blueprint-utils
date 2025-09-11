@@ -3,6 +3,7 @@ members = [
   "libraries/common",
   "libraries/utils",
   "proc_macros/generate_config",
+  "proc_macros/safe_arith",
   "proc_macros/safe_arithmetic",
 ]
 resolver = "2"
