@@ -28,6 +28,7 @@ common= {path = "libraries/common"}
 utils = {path = "libraries/utils"}
 generate_config = {path = "proc_macros/generate_config"}
 safe_arithmetic =  {path = "proc_macros/safe_arithmetic"}
+safe_arith =  {path = "proc_macros/safe_arith"}
 
 
 [profile.release]

@@ -113,6 +113,7 @@ dependencies = [
  "anyhow",
  "generate_config",
  "paste",
+ "safe_arith",
  "safe_arithmetic",
  "scrypto",
  "utils",
