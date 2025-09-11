@@ -10,3 +10,4 @@ scrypto = {workspace = true}
 utils = {workspace = true}
 generate_config = {workspace = true}
 safe_arithmetic = {workspace = true}
+safe_arith = {workspace = true}
