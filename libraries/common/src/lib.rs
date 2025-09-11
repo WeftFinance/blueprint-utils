@@ -1,5 +1,4 @@
 pub mod modules {
-  pub mod common_types;
   pub mod config_manager;
   pub mod metadata_setter;
   pub mod service_manager;
