@@ -33,17 +33,20 @@ pub fn check_claim_nft(input_claim_nft_address: ResourceAddress) -> Option<Compo
   }
 }
 
-pub fn check_recallable_resource(res_manager: ResourceManager) {
-  // Check if the collateral pool supports recall
-  if let Some(role) = res_manager.get_role("recaller") {
-    res_manager.get_role("recaller_updater").map(|updater_role| {
-      ensure!(
-        role == AccessRule::DenyAll && updater_role == AccessRule::DenyAll,
-        "Recallable assets are not supported"
-      );
-      Ok(())
-    });
+pub fn check_recallable_resource(res_manager: ResourceManager) -> Result<()> {
+  // If the resource defines recall roles, enforce they are DenyAll
+  if let Some(recaller_role) = res_manager.get_role("recaller") {
+    let updater_role = res_manager
+      .get_role("recaller_updater")
+      .ok_or_else(|| anyhow!("Recallable assets are not supported"))?;
+
+    ensure!(
+      recaller_role == AccessRule::DenyAll && updater_role == AccessRule::DenyAll,
+      "Recallable assets are not supported"
+    );
   }
+
+  Ok(())
 }
 
 /// Helper function to safely truncate a precise decimal to decimal with the rounding strategy adopted as default

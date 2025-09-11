@@ -7,6 +7,10 @@ pub trait CanBeChecked {
 
   fn is_positive(&self) -> bool;
 
+  fn is_valid_percentage(&self) -> bool {
+    self.is_a_rate()
+  }
+
   fn is_zero_or_positive(&self) -> bool {
     self.is_positive() || self.is_zero()
   }

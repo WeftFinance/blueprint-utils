@@ -1,4 +1,5 @@
 use common::prelude::*;
+use generate_config::GenerateConfig;
 use scrypto::prelude::*;
 
 generate_service_variants!(
@@ -97,21 +98,6 @@ struct TestConfig {
 
 updatable_config!(TestConfig);
 
-trait CanBeChecked {
-  fn is_a_rate(&self) -> bool;
-  // fn is_positive(&self) -> bool;
-}
-
-impl CanBeChecked for &Decimal {
-  fn is_a_rate(&self) -> bool {
-    **self >= Decimal::ZERO && **self <= Decimal::ONE
-  }
-
-  // fn is_positive(&self) -> bool {
-  //   **self > Decimal::ZERO
-  // }
-}
-
 #[test]
 fn test_updatable_config_macro() {
   let mut config = TestConfig {
@@ -129,5 +115,5 @@ fn test_updatable_config_macro() {
 
   // Test validation methods work correctly
   assert!(config.amount.is_positive());
-  assert!((&config.rate).is_a_rate());
+  assert!(config.rate.is_a_rate());
 }

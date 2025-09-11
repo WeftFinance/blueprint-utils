@@ -1,6 +1,6 @@
+use common::prelude::*;
 use generate_config::GenerateConfig;
 use scrypto::prelude::*;
-use utils::prelude::*;
 
 #[derive(Debug, GenerateConfig)]
 pub struct TestConfig {
@@ -41,7 +41,7 @@ fn test_basic_update_functionality() {
   let mut updates = IndexSet::new();
   updates.insert(UpdateTestConfigInput::ValuatorComponent(CONSENSUS_MANAGER));
   updates.insert(UpdateTestConfigInput::Rate(dec!(0.8)));
-  updates.insert(UpdateTestConfigInput::UnderlyingResources(UpdateSetInput::Add("resource1".to_string())));
+  updates.insert(UpdateTestConfigInput::UnderlyingResources(("resource1".to_string(), true)));
   updates.insert(UpdateTestConfigInput::ResourceMap("resource_key1".to_string(), Some(dec!(1.2))));
   updates.insert(UpdateTestConfigInput::ResourceMap("resource_key2".to_string(), Some(dec!(1.3))));
 
@@ -55,7 +55,7 @@ fn test_basic_update_functionality() {
 
   config
     .update(indexset!(
-      UpdateTestConfigInput::UnderlyingResources(UpdateSetInput::Remove("resource1".to_string())),
+      UpdateTestConfigInput::UnderlyingResources(("resource1".to_string(), false)),
       UpdateTestConfigInput::ResourceMap("resource_key1".to_string(), Some(dec!(0.4))),
       UpdateTestConfigInput::ResourceMap("resource_key2".to_string(), None)
     ))
@@ -99,8 +99,8 @@ fn test_set_operations() {
   // Test adding to set
   config
     .update(indexset!(
-      UpdateTestConfigInput::UnderlyingResources(UpdateSetInput::Add("resource1".to_string())),
-      UpdateTestConfigInput::UnderlyingResources(UpdateSetInput::Add("resource2".to_string()))
+      UpdateTestConfigInput::UnderlyingResources(("resource1".to_string(), true)),
+      UpdateTestConfigInput::UnderlyingResources(("resource2".to_string(), true))
     ))
     .unwrap();
 
@@ -110,8 +110,8 @@ fn test_set_operations() {
 
   // Test removing from set
   config
-    .update(indexset!(UpdateTestConfigInput::UnderlyingResources(UpdateSetInput::Remove(
-      "resource1".to_string()
+    .update(indexset!(UpdateTestConfigInput::UnderlyingResources((
+      "resource1".to_string(), false
     ))))
     .unwrap();
 
@@ -121,8 +121,8 @@ fn test_set_operations() {
 
   // Test removing non-existent item (should not fail)
   config
-    .update(indexset!(UpdateTestConfigInput::UnderlyingResources(UpdateSetInput::Remove(
-      "non_existent".to_string()
+    .update(indexset!(UpdateTestConfigInput::UnderlyingResources((
+      "non_existent".to_string(), false
     ))))
     .unwrap();
 
@@ -318,24 +318,4 @@ fn test_multiple_validation_failures() {
   // Values are changed but validation failed, so they remain changed
   assert_eq!(config.amount, dec!(-5.0));
   assert_eq!(config.percentage, dec!(1.5));
-}
-
-trait CanBeChecked {
-  fn is_a_rate(&self) -> bool;
-  // fn is_positive(&self) -> bool;
-  fn is_valid_percentage(&self) -> bool;
-}
-
-impl CanBeChecked for &Decimal {
-  fn is_a_rate(&self) -> bool {
-    **self >= Decimal::ZERO && **self <= Decimal::ONE
-  }
-
-  // fn is_positive(&self) -> bool {
-  //   **self > Decimal::ZERO
-  // }
-
-  fn is_valid_percentage(&self) -> bool {
-    **self >= Decimal::ZERO && **self <= Decimal::ONE
-  }
 }

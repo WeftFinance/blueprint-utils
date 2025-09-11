@@ -357,7 +357,7 @@ macro_rules! generate_service_variants {
       }
 
       // Implement the ServiceVariantProvider trait required by the service system
-      impl common::service_manager::ServiceVariantProvider for $EnumName {
+      impl common::modules::service_manager::ServiceVariantProvider for $EnumName {
         /// Implementation of ServiceVariantProvider trait.
         ///
         /// This delegates to the generated `variants()` method to provide

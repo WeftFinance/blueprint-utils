@@ -1,7 +1,8 @@
 use anyhow::{anyhow, ensure, Result};
 use scrypto::prelude::rust::hash::Hash;
 use scrypto::prelude::*;
-use utils::prelude::*;
+use crate::utils::traits::*;
+use crate::{define_inner_error};
 
 define_inner_error! {
   KEY_AND_VERSION_MISMATCH,

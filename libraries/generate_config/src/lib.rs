@@ -144,16 +144,15 @@ fn generate_set_field_code(
   field_name: &Ident,
   update_enum_name: &Ident,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+  // Keep 1:1 variant-to-field mapping: payload is (T, bool)
+  // bool = true => Add; false => Remove
   let variant = quote! {
-    #variant_name(UpdateSetInput<#inner_type>)
+    #variant_name((#inner_type, bool))
   };
 
   let match_arm = quote! {
-    #update_enum_name::#variant_name(UpdateSetInput::Add(value)) => {
-      self.#field_name.insert(value);
-    },
-    #update_enum_name::#variant_name(UpdateSetInput::Remove(value)) => {
-      self.#field_name.remove(&value);
+    #update_enum_name::#variant_name((value, is_add)) => {
+      if is_add { self.#field_name.insert(value); } else { self.#field_name.remove(&value); }
     }
   };
 

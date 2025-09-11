@@ -1,10 +1,8 @@
 [workspace]
 members = [
   "libraries/common",
-  "libraries/utils",
-  "proc_macros/generate_config",
-  "proc_macros/safe_arith",
-  "proc_macros/safe_arithmetic",
+  "libraries/generate_config",
+  "libraries/safe_arith",
 ]
 resolver = "2"
 
@@ -25,10 +23,8 @@ base64ct = "1.7.3"  # Pin to version compatible with edition 2021
 
 # Local dependencies
 common= {path = "libraries/common"}
-utils = {path = "libraries/utils"}
-generate_config = {path = "proc_macros/generate_config"}
-safe_arithmetic =  {path = "proc_macros/safe_arithmetic"}
-safe_arith =  {path = "proc_macros/safe_arith"}
+generate_config = {path = "libraries/generate_config"}
+safe_arith =  {path = "libraries/safe_arith"}
 
 
 [profile.release]
@@ -44,4 +40,3 @@ arithmetic_side_effects = "warn"
 type_complexity = "allow"
 too_many_arguments = "allow"
 # complexity = "allow"
-
