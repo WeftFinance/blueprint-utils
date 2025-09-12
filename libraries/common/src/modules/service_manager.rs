@@ -27,10 +27,18 @@ enabling fine-grained control over service availability and access permissions.
 - **User**: Cannot change service status (read-only access)
 */
 
+use crate::define_inner_error;
 use anyhow::{anyhow, ensure, Result};
 use indexmap::Equivalent;
 use scrypto::prelude::rust::hash::Hash;
 use scrypto::prelude::*;
+
+define_inner_error! {
+  E_SVC_INACTIVE,
+  E_SVC_LOCKED,
+  E_SVC_UNKNOWN,
+  E_SVC_NOT_SET,
+}
 
 /// Represents the operating status of a single service.
 ///
@@ -105,6 +113,23 @@ where
     Self(services)
   }
 
+  /// Creates a new ServiceStatus with a custom default for `enabled`.
+  ///
+  /// Set `default_enabled` to false for a "closed by default" posture.
+  pub fn with_default(default_enabled: bool) -> Self {
+    let mut services = IndexMap::new();
+    let default_value = OperatingStatus {
+      enabled: default_enabled,
+      locked: false,
+    };
+
+    for service in T::variants() {
+      services.insert(service, default_value);
+    }
+
+    Self(services)
+  }
+
   /// Updates the status of a specific service with role-based access control.
   ///
   /// This method enforces the three-tier access control system:
@@ -156,7 +181,7 @@ where
   /// * `Ok(())` if the service is enabled and available
   /// * `Err` with a descriptive message if the service is disabled or not found
   pub fn assert_active(&self, service: &T) -> Result<()> {
-    ensure!(self.check(service), "The service is not active: ({:?})", service);
+    ensure!(self.check(service), E_SVC_INACTIVE);
 
     Ok(())
   }
@@ -197,20 +222,13 @@ where
   /// * `Err` if the service is locked by an admin
   fn moderator_set_status(&mut self, service: T, new_status: bool) -> Result<()> {
     if let Some(status) = self.0.get_mut(&service) {
-      ensure!(!status.locked, "Service status locked by cannot be changed by a moderator");
+      ensure!(!status.locked, E_SVC_LOCKED);
 
       status.enabled = new_status;
+      Ok(())
     } else {
-      self.0.insert(
-        service,
-        OperatingStatus {
-          enabled: new_status,
-          locked: false,
-        },
-      );
+      Err(anyhow!(E_SVC_UNKNOWN))
     }
-
-    Ok(())
   }
 }
 
@@ -262,7 +280,7 @@ impl<K: ScryptoSbor + Hash + Copy, T: ScryptoSbor + ServiceVariantProvider + Eq 
   /// * `Ok(false)` if the service is disabled
   /// * `Err` if the entity is not found
   pub fn check(&self, key: K, service: T) -> Result<bool> {
-    let entry = self.entries.get(&key).ok_or_else(|| anyhow!("Service is not set"))?;
+    let entry = self.entries.get(&key).ok_or_else(|| anyhow!(E_SVC_NOT_SET))?;
     Ok(entry.check(&service))
   }
 
@@ -278,7 +296,7 @@ impl<K: ScryptoSbor + Hash + Copy, T: ScryptoSbor + ServiceVariantProvider + Eq 
   /// * `Ok(())` if the service is enabled
   /// * `Err` if the service is disabled or the entity is not found
   pub fn assert(&self, key: K, service: &T) -> Result<()> {
-    let entry = self.entries.get(&key).ok_or_else(|| anyhow!("Service is not set"))?;
+    let entry = self.entries.get(&key).ok_or_else(|| anyhow!(E_SVC_NOT_SET))?;
     entry.assert_active(service)
   }
 
@@ -297,7 +315,7 @@ impl<K: ScryptoSbor + Hash + Copy, T: ScryptoSbor + ServiceVariantProvider + Eq 
   /// * `Ok(())` if the status was successfully updated
   /// * `Err` if the entity is not found or access control rules prevent the change
   pub fn update(&mut self, key: K, service: T, new_status: bool, status_change_type: StatusChangeType) -> Result<()> {
-    let mut entry = self.entries.get_mut(&key).ok_or_else(|| anyhow!("Service is not set"))?;
+    let mut entry = self.entries.get_mut(&key).ok_or_else(|| anyhow!(E_SVC_NOT_SET))?;
     entry.set_status(service, new_status, status_change_type)
   }
 }

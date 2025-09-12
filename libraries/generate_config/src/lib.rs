@@ -113,6 +113,11 @@ fn generate_config_impl(input: TokenStream) -> std::result::Result<TokenStream, 
       }
 
       impl #name {
+          /// Applies updates in order, then validates via `check()`.
+          ///
+          /// Contract: mutate-then-validate. If validation fails, changes remain
+          /// applied to `self` in-memory; callers should only persist state after a
+          /// successful `Ok(())` or use a wrapper that re-validates before persistence.
           #[inline]
           pub fn update(&mut self, config_inputs: IndexSet<#update_enum_name>) -> Result<(), String> {
               for config_input in config_inputs {
@@ -126,6 +131,8 @@ fn generate_config_impl(input: TokenStream) -> std::result::Result<TokenStream, 
               Ok(())
           }
 
+          /// Validates the current configuration state. Returns `Err(String)` with a
+          /// concise message when any field-level predicate fails.
           #[inline]
           pub fn check(&self) -> Result<(),String> {
               #(#check_calls)*

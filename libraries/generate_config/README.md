@@ -27,6 +27,10 @@ struct ValidationConfig {
 }
 ```
 
+## Semantics
+- `update()` applies changes first, then calls `check()`.
+- If validation fails, the in-memory struct remains mutated; persist only after `Ok(()))` or use a wrapper (e.g., `ConfigurationManager`) that validates before storing.
+
 ## Example
 
 ```rust

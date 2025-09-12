@@ -60,6 +60,11 @@ manager.update(1, MarketService::CreateCDP, true, StatusChangeType::AdminSetAndL
 manager.assert(1, &MarketService::CreateCDP)?;
 ```
 
+Recommended role usage:
+- Derive the authority (Admin/Moderator) from the caller’s badge/role inside your blueprint.
+- Do not let external callers supply `StatusChangeType` — compute it server-side.
+- For a safer baseline, initialize with `ServiceStatus::with_default(false)` and explicitly enable services.
+
 ### Configuration manager + GenerateConfig
 Use `GenerateConfig` to derive an update enum and validation; then make it `Updatable` with `updatable_config!`:
 
@@ -84,6 +89,11 @@ let updates = indexset![
 ];
 cfg.update(updates)?;
 ```
+
+Reference safety (optional):
+- When binding external entities (e.g., CDPs) to a specific config version, call `inc_ref(key, version)`.
+- When unbinding, call `dec_ref(key, version)`.
+- Use `get_history_entry_strict(key, version)` to fetch only if still valid; it errors with `E_CFG_EXPIRED` instead of silently falling back.
 
 ### Metadata during initialization
 Set and optionally lock metadata on components/resources during init:

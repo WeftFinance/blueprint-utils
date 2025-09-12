@@ -1,13 +1,15 @@
+use crate::define_inner_error;
+use crate::utils::traits::*;
 use anyhow::{anyhow, ensure, Result};
 use scrypto::prelude::rust::hash::Hash;
 use scrypto::prelude::*;
-use crate::utils::traits::*;
-use crate::{define_inner_error};
 
 define_inner_error! {
   KEY_AND_VERSION_MISMATCH,
   CONFIG_ENTRY_NOT_FOUND,
   CONFIG_VERSION_NOT_FOUND,
+  E_CFG_EXPIRED,
+  E_VER_OVERFLOW,
 }
 
 #[derive(ScryptoSbor, ManifestSbor, Clone)]
@@ -92,24 +94,26 @@ where
   }
 
   pub fn remove_entry(&mut self, key: K) -> Result<()> {
-    self.entries.remove(&ConfigurationKey::Current(key));
+    if self.entries.remove(&ConfigurationKey::Current(key)).is_some() {
+      self.entry_count = self.entry_count.saturating_sub(1);
+    }
     Ok(())
   }
 
   pub fn set_entry_expiration(&mut self, key: K, version: u64, expiration_time: SetExpirationInput) -> Result<()> {
     match self.entries.get_mut(&ConfigurationKey::History(version)) {
       Some(mut entry) => {
-        ensure!(entry.key == key, "{}|{:?} != {:?}", KEY_AND_VERSION_MISMATCH, key, entry.key);
+        ensure!(entry.key == key, "{}", KEY_AND_VERSION_MISMATCH);
 
         match expiration_time {
           SetExpirationInput::None => entry.expiration_time = None,
-          SetExpirationInput::Now => entry.expiration_time = Some(Instant::now()),
+          SetExpirationInput::Now => entry.expiration_time = Some(<Instant as InstantUtils>::now()),
           SetExpirationInput::Instant(expiration_time) => entry.expiration_time = Some(expiration_time),
         };
 
         Ok(())
       }
-      None => Err(anyhow!("{}|{}", CONFIG_VERSION_NOT_FOUND, version)),
+      None => Err(anyhow!(CONFIG_VERSION_NOT_FOUND)),
     }
   }
 
@@ -135,9 +139,9 @@ where
       .get(&ConfigurationKey::History(version))
       .ok_or(anyhow!(CONFIG_VERSION_NOT_FOUND))?;
 
-    ensure!(entry.key == key, "{}|{:?} != {:?}", KEY_AND_VERSION_MISMATCH, key, entry.key);
+    ensure!(entry.key == key, "{}", KEY_AND_VERSION_MISMATCH);
 
-    let is_from_history = entry.expiration_time.map_or(true, |time| time > Instant::now());
+    let is_from_history = entry.expiration_time.map_or(true, |time| time > <Instant as InstantUtils>::now());
 
     let returned_entry = if is_from_history {
       entry.entry.clone()
@@ -146,6 +150,25 @@ where
     };
 
     Ok((returned_entry, is_from_history))
+  }
+
+  /// Returns the exact historical entry if it's still valid; errors if expired.
+  ///
+  /// Use this variant when you want strong guarantees that the referenced
+  /// configuration version is the one being used, and avoid silent fallbacks.
+  pub fn get_history_entry_strict(&self, key: K, version: u64) -> Result<C> {
+    let entry = self
+      .entries
+      .get(&ConfigurationKey::History(version))
+      .ok_or(anyhow!(CONFIG_VERSION_NOT_FOUND))?;
+
+    ensure!(entry.key == key, KEY_AND_VERSION_MISMATCH);
+
+    let is_valid = entry.expiration_time.map_or(true, |time| time > <Instant as InstantUtils>::now());
+
+    ensure!(is_valid, E_CFG_EXPIRED);
+
+    Ok(entry.entry.clone())
   }
 
   // ! LOCAL METHODS
@@ -167,7 +190,15 @@ where
     self.entries.insert(ConfigurationKey::Current(key), current_entry);
 
     if self.track_history {
-      let expiration_time = self.default_expiration_time.map(|exp| Instant::now().add_seconds(exp as i64).unwrap());
+      // Avoid panics: only set expiration if conversion and addition are valid
+      let expiration_time = self.default_expiration_time.and_then(|exp| {
+        // Convert u64 -> i64 safely
+        if exp <= i64::MAX as u64 {
+          <Instant as InstantUtils>::now().add_seconds(exp as i64)
+        } else {
+          None
+        }
+      });
 
       let history_entry = ConfigurationEntry {
         key,
@@ -177,7 +208,7 @@ where
       };
 
       self.entries.insert(ConfigurationKey::History(self.version_count), history_entry);
-      self.version_count = self.version_count.checked_add(1).unwrap();
+      self.version_count = self.version_count.checked_add(1).ok_or(anyhow!(E_VER_OVERFLOW))?;
     }
 
     Ok(())

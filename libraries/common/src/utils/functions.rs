@@ -10,7 +10,9 @@ pub fn check_lsu(input_lsu_address: ResourceAddress) -> Option<ComponentAddress>
 
   let lsu_address: GlobalAddress = validator.get_metadata("pool_unit").ok()??;
 
-  if input_lsu_address == ResourceAddress::try_from(lsu_address).unwrap() {
+  let lsu_res_addr = ResourceAddress::try_from(lsu_address).ok()?;
+
+  if input_lsu_address == lsu_res_addr {
     Some(validator_address)
   } else {
     None
@@ -26,7 +28,9 @@ pub fn check_claim_nft(input_claim_nft_address: ResourceAddress) -> Option<Compo
 
   let claim_nft_address: GlobalAddress = validator.get_metadata("claim_nft").ok()??;
 
-  if input_claim_nft_address == ResourceAddress::try_from(claim_nft_address).unwrap() {
+  let claim_res_addr = ResourceAddress::try_from(claim_nft_address).ok()?;
+
+  if input_claim_nft_address == claim_res_addr {
     Some(validator_address)
   } else {
     None
@@ -38,11 +42,11 @@ pub fn check_recallable_resource(res_manager: ResourceManager) -> Result<()> {
   if let Some(recaller_role) = res_manager.get_role("recaller") {
     let updater_role = res_manager
       .get_role("recaller_updater")
-      .ok_or_else(|| anyhow!("Recallable assets are not supported"))?;
+      .ok_or_else(|| anyhow!("E_RECALL_UNSUPPORTED"))?;
 
     ensure!(
       recaller_role == AccessRule::DenyAll && updater_role == AccessRule::DenyAll,
-      "Recallable assets are not supported"
+      "E_RECALL_UNSUPPORTED"
     );
   }
 
